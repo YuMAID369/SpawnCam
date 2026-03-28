@@ -1,0 +1,139 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+-- Controles Oficiais do Roblox
+local PlayerModule = require(player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule"))
+local controls = PlayerModule:GetControls()
+
+-- Variáveis de Estado
+local isFreeCam = false
+local baseSpeed = 1 
+local smoothing = 0.15
+local pitch, yaw = 0, 0
+local upValue, downValue = 0, 0
+local velocity = Vector3.new(0,0,0)
+
+--- IDs dos Ícones ---
+local ID_ATIVADO = "rbxassetid://104969538406127"
+local ID_DESATIVADO = "rbxassetid://117244092950160"
+
+-- Interface
+local screenGui = Instance.new("ScreenGui", player.PlayerGui)
+screenGui.Name = "GhostModeGui"
+screenGui.ResetOnSpawn = false
+
+-- Botão de Imagem (SEM BORDAS E SEM FUNDO)
+local mainButton = Instance.new("ImageButton", screenGui)
+mainButton.Name = "FreeCamButton"
+mainButton.Size = UDim2.new(0, 70, 0, 70) 
+mainButton.Position = UDim2.new(0.05, 0, 0.5, 0)
+mainButton.Image = ID_DESATIVADO
+mainButton.ScaleType = Enum.ScaleType.Fit
+mainButton.BackgroundTransparency = 1
+mainButton.BorderSizePixel = 0
+mainButton.Active = true
+
+--- SISTEMA DE ARRASTAR ---
+local dragging, dragStart, startPos
+local hasMoved = false
+
+mainButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        hasMoved = false
+        dragStart = input.Position
+        startPos = mainButton.Position
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        if delta.Magnitude > 8 then hasMoved = true end
+        mainButton.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+--- LÓGICA DA CÂMERA ---
+local function onRenderStep(dt)
+    if not isFreeCam then return end
+    local moveVector = controls:GetMoveVector()
+    local targetMove = Vector3.new(moveVector.X, upValue - downValue, moveVector.Z)
+    
+    if targetMove.Magnitude > 0 then
+        targetMove = targetMove.Unit * baseSpeed
+    end
+    
+    velocity = velocity:Lerp(targetMove, smoothing)
+    local rotationCFrame = CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch, 0, 0)
+    camera.CFrame = CFrame.new(camera.CFrame.Position) * rotationCFrame * CFrame.new(velocity)
+end
+
+local function toggleGhostMode()
+    if hasMoved then return end 
+    
+    isFreeCam = not isFreeCam
+    local char = player.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+
+    if isFreeCam then
+        -- ATIVAR FREE CAM
+        mainButton.Image = ID_ATIVADO
+        
+        -- Travamos apenas a posição física para o corpo não cair/andar
+        if root then root.Anchored = true end
+        
+        -- Mantemos as animações (Animate) ligadas para o corpo parecer normal (Idle)
+        camera.CameraType = Enum.CameraType.Scriptable
+        local cx, cy = camera.CFrame:ToEulerAnglesYXZ()
+        pitch, yaw = cx, cy
+        RunService:BindToRenderStep("GhostCamUpdate", Enum.RenderPriority.Camera.Value, onRenderStep)
+    else
+        -- DESATIVAR FREE CAM
+        mainButton.Image = ID_DESATIVADO
+        
+        velocity = Vector3.new(0,0,0)
+        if root then root.Anchored = false end -- Solta o corpo para gravidade voltar
+        
+        camera.CameraType = Enum.CameraType.Custom
+        camera.CameraSubject = hum
+        RunService:UnbindFromRenderStep("GhostCamUpdate")
+    end
+end
+
+mainButton.Activated:Connect(toggleGhostMode)
+
+-- Rotação e Teclas (Controles)
+UserInputService.InputChanged:Connect(function(input)
+    if isFreeCam and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        -- Rotação com Botão Direito ou Touch no Celular
+        if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) or input.UserInputType == Enum.UserInputType.Touch then
+            local delta = input.Delta
+            yaw = yaw - (delta.X * 0.004)
+            pitch = math.clamp(pitch - (delta.Y * 0.004), -math.rad(89), math.rad(89))
+        end
+    end
+end)
+
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.E or input.KeyCode == Enum.KeyCode.Space then upValue = 1 end
+    if input.KeyCode == Enum.KeyCode.Q or input.KeyCode == Enum.KeyCode.LeftControl then downValue = 1 end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.E or input.KeyCode == Enum.KeyCode.Space then upValue = 0 end
+    if input.KeyCode == Enum.KeyCode.Q or input.KeyCode == Enum.KeyCode.LeftControl then downValue = 0 end
+end)
