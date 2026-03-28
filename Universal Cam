@@ -26,19 +26,16 @@ local screenGui = Instance.new("ScreenGui", player.PlayerGui)
 screenGui.Name = "GhostModeGui"
 screenGui.ResetOnSpawn = false
 
--- Botão de Imagem (SEM BORDAS)
+-- Botão de Imagem (SEM BORDAS E SEM FUNDO)
 local mainButton = Instance.new("ImageButton", screenGui)
 mainButton.Name = "FreeCamButton"
 mainButton.Size = UDim2.new(0, 70, 0, 70) 
 mainButton.Position = UDim2.new(0.05, 0, 0.5, 0)
 mainButton.Image = ID_DESATIVADO
 mainButton.ScaleType = Enum.ScaleType.Fit
+mainButton.BackgroundTransparency = 1
+mainButton.BorderSizePixel = 0
 mainButton.Active = true
-
--- REMOVENDO A PARTE QUADRADA E BORDAS:
-mainButton.BackgroundTransparency = 1 -- Torna o fundo do quadrado 100% invisível
-mainButton.BorderSizePixel = 0        -- Remove qualquer linha de borda padrão
-mainButton.ImageTransparency = 0      -- Deixa o ícone totalmente visível
 
 --- SISTEMA DE ARRASTAR ---
 local dragging, dragStart, startPos
@@ -90,23 +87,26 @@ local function toggleGhostMode()
     if not char then return end
     local root = char:FindFirstChild("HumanoidRootPart")
     local hum = char:FindFirstChildOfClass("Humanoid")
-    local animate = char:FindFirstChild("Animate")
 
     if isFreeCam then
+        -- ATIVAR FREE CAM
         mainButton.Image = ID_ATIVADO
+        
+        -- Travamos apenas a posição física para o corpo não cair/andar
         if root then root.Anchored = true end
-        if animate then animate.Enabled = false end
-        if hum then for _, track in ipairs(hum:GetPlayingAnimationTracks()) do track:Stop() end end
-
+        
+        -- Mantemos as animações (Animate) ligadas para o corpo parecer normal (Idle)
         camera.CameraType = Enum.CameraType.Scriptable
         local cx, cy = camera.CFrame:ToEulerAnglesYXZ()
         pitch, yaw = cx, cy
         RunService:BindToRenderStep("GhostCamUpdate", Enum.RenderPriority.Camera.Value, onRenderStep)
     else
+        -- DESATIVAR FREE CAM
         mainButton.Image = ID_DESATIVADO
+        
         velocity = Vector3.new(0,0,0)
-        if root then root.Anchored = false end
-        if animate then animate.Enabled = true end
+        if root then root.Anchored = false end -- Solta o corpo para gravidade voltar
+        
         camera.CameraType = Enum.CameraType.Custom
         camera.CameraSubject = hum
         RunService:UnbindFromRenderStep("GhostCamUpdate")
@@ -115,9 +115,10 @@ end
 
 mainButton.Activated:Connect(toggleGhostMode)
 
--- Rotação e Teclas (Mantidos)
+-- Rotação e Teclas (Controles)
 UserInputService.InputChanged:Connect(function(input)
     if isFreeCam and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        -- Rotação com Botão Direito ou Touch no Celular
         if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) or input.UserInputType == Enum.UserInputType.Touch then
             local delta = input.Delta
             yaw = yaw - (delta.X * 0.004)
