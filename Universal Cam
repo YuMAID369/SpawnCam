@@ -17,16 +17,19 @@ local pitch, yaw = 0, 0
 local upValue, downValue = 0, 0
 local velocity = Vector3.new(0,0,0)
 
+-- Variáveis para o Clique Duplo
+local lastClickTime = 0
+local doubleClickThreshold = 0.3 -- Tempo máximo entre cliques (300ms)
+
 --- IDs dos Ícones ---
-local ID_ATIVADO = "rbxassetid://104969538406127"
-local ID_DESATIVADO = "rbxassetid://117244092950160"
+local ID_ATIVADO = "rbxassetid://84436978176233"
+local ID_DESATIVADO = "rbxassetid://106559516221683"
 
 -- Interface
 local screenGui = Instance.new("ScreenGui", player.PlayerGui)
 screenGui.Name = "GhostModeGui"
 screenGui.ResetOnSpawn = false
 
--- Botão de Imagem (SEM BORDAS E SEM FUNDO)
 local mainButton = Instance.new("ImageButton", screenGui)
 mainButton.Name = "FreeCamButton"
 mainButton.Size = UDim2.new(0, 70, 0, 70) 
@@ -64,6 +67,26 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
+--- FUNÇÃO PARA ENCERRAR O SCRIPT COMPLETAMENTE ---
+local function selfDestruct()
+    isFreeCam = false
+    RunService:UnbindFromRenderStep("GhostCamUpdate")
+    
+    local char = player.Character
+    if char then
+        local root = char:FindFirstChild("HumanoidRootPart")
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if root then root.Anchored = false end
+        if hum then
+            camera.CameraType = Enum.CameraType.Custom
+            camera.CameraSubject = hum
+        end
+    end
+    
+    screenGui:Destroy() -- Remove o botão e a interface
+    script:Destroy()    -- Encerra o script
+end
+
 --- LÓGICA DA CÂMERA ---
 local function onRenderStep(dt)
     if not isFreeCam then return end
@@ -79,9 +102,22 @@ local function onRenderStep(dt)
     camera.CFrame = CFrame.new(camera.CFrame.Position) * rotationCFrame * CFrame.new(velocity)
 end
 
-local function toggleGhostMode()
+--- ATIVAÇÃO / DESATIVAÇÃO / DOUBLE CLICK ---
+mainButton.Activated:Connect(function()
     if hasMoved then return end 
+
+    local currentTime = tick()
+    local timeSinceLastClick = currentTime - lastClickTime
     
+    if timeSinceLastClick < doubleClickThreshold then
+        -- EXECUTA FECHAMENTO COMPLETO
+        selfDestruct()
+        return
+    end
+    
+    lastClickTime = currentTime
+
+    -- Lógica normal de Toggle
     isFreeCam = not isFreeCam
     local char = player.Character
     if not char then return end
@@ -89,36 +125,25 @@ local function toggleGhostMode()
     local hum = char:FindFirstChildOfClass("Humanoid")
 
     if isFreeCam then
-        -- ATIVAR FREE CAM
         mainButton.Image = ID_ATIVADO
-        
-        -- Travamos apenas a posição física para o corpo não cair/andar
         if root then root.Anchored = true end
-        
-        -- Mantemos as animações (Animate) ligadas para o corpo parecer normal (Idle)
         camera.CameraType = Enum.CameraType.Scriptable
         local cx, cy = camera.CFrame:ToEulerAnglesYXZ()
         pitch, yaw = cx, cy
         RunService:BindToRenderStep("GhostCamUpdate", Enum.RenderPriority.Camera.Value, onRenderStep)
     else
-        -- DESATIVAR FREE CAM
         mainButton.Image = ID_DESATIVADO
-        
         velocity = Vector3.new(0,0,0)
-        if root then root.Anchored = false end -- Solta o corpo para gravidade voltar
-        
+        if root then root.Anchored = false end
         camera.CameraType = Enum.CameraType.Custom
         camera.CameraSubject = hum
         RunService:UnbindFromRenderStep("GhostCamUpdate")
     end
-end
-
-mainButton.Activated:Connect(toggleGhostMode)
+end)
 
 -- Rotação e Teclas (Controles)
 UserInputService.InputChanged:Connect(function(input)
     if isFreeCam and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        -- Rotação com Botão Direito ou Touch no Celular
         if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) or input.UserInputType == Enum.UserInputType.Touch then
             local delta = input.Delta
             yaw = yaw - (delta.X * 0.004)
